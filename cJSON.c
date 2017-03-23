@@ -244,8 +244,7 @@ static unsigned char* ensure(printbuffer *p, size_t needed)
     }
 
     /* calculate new buffer size */
-    newsize = needed * 2;
-    if (newsize > INT_MAX)
+    if (newsize > (INT_MAX / 2))
     {
         /* overflow of int, use INT_MAX if possible */
         if (needed <= INT_MAX)
@@ -256,6 +255,10 @@ static unsigned char* ensure(printbuffer *p, size_t needed)
         {
             return NULL;
         }
+    }
+    else
+    {
+        newsize = needed * 2;
     }
 
     newbuffer = (unsigned char*)cJSON_malloc(newsize);
