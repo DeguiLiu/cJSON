@@ -1,8 +1,10 @@
+#pragma GCC visibility push(default)
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#pragma GCC visibility pop
 
 #include "cJSON_Utils.h"
 
@@ -21,98 +23,109 @@ static unsigned char* cJSONUtils_strdup(const unsigned char* str)
     return copy;
 }
 
-static int cJSONUtils_strcasecmp(const unsigned char *s1, const unsigned char *s2)
+static int cJSONUtils_strcasecmp(const unsigned char *string1, const unsigned char *string2)
 {
-    if (!s1)
-    {
-        return (s1 == s2) ? 0 : 1; /* both NULL? */
-    }
-    if (!s2)
+    if ((string1 == NULL) || (string2 == NULL))
     {
         return 1;
     }
-    for(; tolower(*s1) == tolower(*s2); ++s1, ++s2)
+
+    if (string1 == string2)
     {
-        if(*s1 == 0)
+        return 0;
+    }
+
+    for(; tolower(*string1) == tolower(*string2); (void)string1++, string2++)
+    {
+        if (*string1 == '\0')
         {
             return 0;
         }
     }
 
-    return tolower(*s1) - tolower(*s2);
+    return tolower(*string1) - tolower(*string2);
+
 }
 
 /* JSON Pointer implementation: */
-static int cJSONUtils_Pstrcasecmp(const unsigned char *a, const unsigned char *e)
+static int cJSONUtils_Pstrcasecmp(const unsigned char *name, const unsigned char *pointer)
 {
-    if (!a || !e)
+    if ((name == NULL) || (pointer == NULL))
     {
-        return (a == e) ? 0 : 1; /* both NULL? */
+        return 1;
     }
-    for (; *a && *e && (*e != '/'); a++, e++) /* compare until next '/' */
+
+    for (; (*name != '\0') && (*pointer != '\0') && (*pointer != '/'); (void)name++, pointer++) /* compare until next '/' */
     {
-        if (*e == '~')
+        if (*pointer == '~')
         {
             /* check for escaped '~' (~0) and '/' (~1) */
-            if (!((e[1] == '0') && (*a == '~')) && !((e[1] == '1') && (*a == '/')))
+            if (((pointer[1] != '0') || (*name != '~')) && ((pointer[1] != '1') || (*name != '/')))
             {
-                /* invalid escape sequence or wrong character in *a */
+                /* invalid escape sequence or wrong character in *name */
                 return 1;
             }
             else
             {
-                e++;
+                pointer++;
             }
         }
-        else if (tolower(*a) != tolower(*e))
+        else if ((tolower(*name) != tolower(*pointer)) || (*name != *pointer))
         {
             return 1;
         }
     }
-    if (((*e != 0) && (*e != '/')) != (*a != 0))
+    if (((*pointer != 0) && (*pointer != '/')) != (*name != 0))
     {
         /* one string has ended, the other not */
-        return 1;
+        return 1;;
     }
 
     return 0;
+
 }
 
-static size_t cJSONUtils_PointerEncodedstrlen(const unsigned char *s)
+/* calculate the length of a string if encoded as JSON pointer with ~0 and ~1 escape sequences */
+static size_t cJSONUtils_PointerEncodedstrlen(const unsigned char *string)
 {
-    size_t l = 0;
-    for (; *s; s++, l++)
+    size_t length;
+    for (length = 0; *string != '\0'; (void)string++, length++)
     {
-        if ((*s == '~') || (*s == '/'))
+        /* character needs to be escaped? */
+        if ((*string == '~') || (*string == '/'))
         {
-            l++;
+            length++;
         }
     }
 
-    return l;
+    return length;
+
 }
 
-static void cJSONUtils_PointerEncodedstrcpy(unsigned char *d, const unsigned char *s)
+/* copy a string while escaping '~' and '/' with ~0 and ~1 JSON pointer escape codes */
+static void cJSONUtils_PointerEncodedstrcpy(unsigned char *destination, const unsigned char *source)
 {
-    for (; *s; s++)
+    for (; source[0] != '\0'; (void)source++, destination++)
     {
-        if (*s == '/')
+        if (source[0] == '/')
         {
-            *d++ = '~';
-            *d++ = '1';
+            destination[1] = '1';
+            destination++;
         }
-        else if (*s == '~')
+        else if (source[0] == '~')
         {
-            *d++ = '~';
-            *d++ = '0';
+            destination[0] = '~';
+            destination[1] = '1';
+            destination++;
         }
         else
         {
-            *d++ = *s;
+            destination[0] = source[0];
         }
     }
 
-    *d = '\0';
+    destination[0] = '\0';
+
 }
 
 char *cJSONUtils_FindPointerFromObjectTo(cJSON *object, cJSON *target)

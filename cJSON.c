@@ -23,6 +23,7 @@
 /* cJSON */
 /* JSON parser in C. */
 
+#pragma GCC visibility push(default)
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
@@ -30,6 +31,7 @@
 #include <float.h>
 #include <limits.h>
 #include <ctype.h>
+#pragma GCC visibility pop
 #include "cJSON.h"
 
 /* define our own boolean type */
@@ -58,25 +60,27 @@ extern const char* cJSON_Version(void)
 }
 
 /* case insensitive strcmp */
-static int cJSON_strcasecmp(const unsigned char *s1, const unsigned char *s2)
+static int cJSON_strcasecmp(const unsigned char *string1, const unsigned char *string2)
 {
-    if (!s1)
-    {
-        return (s1 == s2) ? 0 : 1; /* both NULL? */
-    }
-    if (!s2)
+    if ((string1 == NULL) || (string2 == NULL))
     {
         return 1;
     }
-    for(; tolower(*s1) == tolower(*s2); ++s1, ++s2)
+
+    if (string1 == string2)
     {
-        if (*s1 == '\0')
+        return 0;
+    }
+
+    for(; tolower(*string1) == tolower(*string2); (void)string1++, string2++)
+    {
+        if (*string1 == '\0')
         {
             return 0;
         }
     }
 
-    return tolower(*s1) - tolower(*s2);
+    return tolower(*string1) - tolower(*string2);
 }
 
 static void *(*cJSON_malloc)(size_t sz) = malloc;
@@ -223,6 +227,12 @@ static unsigned char* ensure(printbuffer *p, size_t needed)
     unsigned char *newbuffer = NULL;
     size_t newsize = 0;
 
+    if ((p->length > 0) && (p->offset >= p->length))
+    {
+        /* make sure that offset is valid */
+        return NULL;
+    }
+
     if (needed > INT_MAX)
     {
         /* sizes bigger than INT_MAX are currently not supported */
@@ -233,7 +243,7 @@ static unsigned char* ensure(printbuffer *p, size_t needed)
     {
         return NULL;
     }
-    needed += p->offset;
+    needed += p->offset + 1;
     if (needed <= p->length)
     {
         return p->buffer + p->offset;
@@ -295,16 +305,16 @@ static size_t update(const printbuffer *p)
 }
 
 /* Render the number nicely from the given item into a string. */
-static unsigned char *print_number(const cJSON *item, printbuffer *p)
+static unsigned char *print_number(const cJSON *const item, printbuffer *const output_buffer)
 {
     unsigned char *str = NULL;
     double d = item->valuedouble;
     /* special case for 0. */
     if (d == 0)
     {
-        if (p)
+        if (output_buffer)
         {
-            str = ensure(p, 2);
+            str = ensure(output_buffer, 2);
         }
         else
         {
@@ -318,9 +328,9 @@ static unsigned char *print_number(const cJSON *item, printbuffer *p)
     /* value is an int */
     else if ((fabs(((double)item->valueint) - d) <= DBL_EPSILON) && (d <= INT_MAX) && (d >= INT_MIN))
     {
-        if (p)
+        if (output_buffer)
         {
-            str = ensure(p, 21);
+            str = ensure(output_buffer, 21);
         }
         else
         {
@@ -335,10 +345,10 @@ static unsigned char *print_number(const cJSON *item, printbuffer *p)
     /* value is a floating point number */
     else
     {
-        if (p)
+        if (output_buffer)
         {
             /* This is a nice tradeoff. */
-            str = ensure(p, 64);
+            str = ensure(output_buffer, 64);
         }
         else
         {
@@ -574,7 +584,8 @@ static const unsigned char *parse_string(cJSON * const item, const unsigned char
 
         /* This is at most how much we need for the output */
         allocation_length = (size_t) (input_end - input) - skipped_bytes;
-        output = (unsigned char*)cJSON_malloc(allocation_length + sizeof('\0'));
+        /* Because sizeof('\0') is actually sizeof(int) not sizeof(char). */
+        output = (unsigned char*)cJSON_malloc(allocation_length + sizeof(""));
         if (output == NULL)
         {
             goto fail; /* allocation failure */
@@ -903,9 +914,9 @@ char *cJSON_PrintBuffered(const cJSON *item, int prebuffer, cjbool fmt)
 
 int cJSON_PrintPreallocated(cJSON *item, char *buf, const int len, const cjbool fmt)
 {
-    printbuffer p;
+    printbuffer p ;
 
-    if (len < 0)
+    if ((len < 0) || (buf == NULL))
     {
         return false;
     }
@@ -1021,7 +1032,7 @@ static unsigned char *print_value(const cJSON *item, size_t depth, cjbool fmt, p
                     break;
                 }
 
-                raw_length = strlen(item->valuestring) + sizeof('\0');
+                raw_length = strlen(item->valuestring) + sizeof("");
                 out = ensure(p, raw_length);
                 if (out)
                 {
@@ -1731,7 +1742,7 @@ cJSON *cJSON_GetArrayItem(const cJSON *array, int item)
     return c;
 }
 
-cJSON *cJSON_GetObjectItem(const cJSON *object, const char *string)
+cJSON *cJSON_GetObjectItem(const cJSON *const object, const char *const string)
 {
     cJSON *c = object ? object->child : NULL;
     while (c && cJSON_strcasecmp((unsigned char*)c->string, (const unsigned char*)string))
@@ -1756,16 +1767,21 @@ static void suffix_object(cJSON *prev, cJSON *item)
 /* Utility for handling references. */
 static cJSON *create_reference(const cJSON *item)
 {
-    cJSON *ref = cJSON_New_Item();
-    if (!ref)
+    cJSON *reference = NULL;
+    if (item == NULL)
     {
         return NULL;
     }
-    memcpy(ref, item, sizeof(cJSON));
-    ref->string = NULL;
-    ref->type |= cJSON_IsReference;
-    ref->next = ref->prev = NULL;
-    return ref;
+    reference = cJSON_New_Item();
+    if (reference == NULL)
+    {
+        return NULL;
+    }
+    memcpy(reference, item, sizeof(cJSON));
+    reference->string = NULL;
+    reference->type |= cJSON_IsReference;
+    reference->next = reference->prev = NULL;
+    return reference;
 }
 
 /* Add item to array/object. */
@@ -1798,6 +1814,10 @@ void cJSON_AddItemToArray(cJSON *array, cJSON *item)
 
 void   cJSON_AddItemToObject(cJSON *object, const char *string, cJSON *item)
 {
+    if (item == NULL)
+    {
+        return;
+    }
     /* call cJSON_AddItemToObjectCS for code reuse */
     cJSON_AddItemToObjectCS(object, (char*)cJSON_strdup((const unsigned char*)string), item);
     /* remove cJSON_StringIsConst flag */
@@ -2124,7 +2144,7 @@ cJSON *cJSON_CreateIntArray(const int *numbers, int count)
     cJSON *p = NULL;
     cJSON *a = NULL;
 
-    if (count < 0)
+    if ((count < 0) || (numbers == NULL))
     {
         return NULL;
     }
@@ -2343,6 +2363,10 @@ fail:
 void cJSON_Minify(char *json)
 {
     unsigned char *into = (unsigned char*)json;
+    if (json == NULL)
+    {
+        return;
+    }
     while (*json)
     {
         if (*json == ' ')

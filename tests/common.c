@@ -70,7 +70,7 @@ extern char *read_file(const char *filename)
     }
 
     /* allocate content buffer */
-    content = (char*)malloc((size_t)length + sizeof('\0'));
+    content = (char*)malloc((size_t)length + sizeof(""));
     if (content == NULL)
     {
         goto cleanup;
